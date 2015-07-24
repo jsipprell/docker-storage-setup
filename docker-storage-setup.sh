@@ -99,12 +99,12 @@ get_devicemapper_config_options() {
     fi
     done )
 
-  storage_options="DOCKER_STORAGE_OPTIONS=--storage-driver devicemapper --storage-opt dm.fs=xfs --storage-opt dm.thinpooldev=$POOL_DEVICE_PATH $(get_deferred_removal_string)"
+  storage_options="DOCKER_STORAGE_OPTIONS='--storage-driver devicemapper --storage-opt dm.thinpooldev=$POOL_DEVICE_PATH $(get_deferred_removal_string)'"
   echo $storage_options
 }
 
 get_overlay_config_options() {
-  echo "DOCKER_STORAGE_OPTIONS=--storage-driver overlay"
+  echo "DOCKER_STORAGE_OPTIONS='--storage-driver overlay'"
 }
 
 write_storage_config_file () {
@@ -457,6 +457,15 @@ usage() {
 # Main Script
 
 if [ $# -gt 0 ]; then
+  case "$1" in
+    reset)
+      echo "Reseting storage driver to devicemapper in $DOCKER_STORAGE"
+      echo "DOCKER_STORAGE_OPTIONS='--storage-driver devicemapper'" >$DOCKER_STORAGE
+      exit $?
+      ;;
+    *)
+      ;;
+  esac
   usage $0
   exit 0
 fi
@@ -467,14 +476,19 @@ fi
 
 # If user has overridden any settings in /etc/sysconfig/docker-storage-setup
 # take that into account.
-if [ -e /etc/sysconfig/docker-storage-setup ]; then
-  source /etc/sysconfig/docker-storage-setup
+if [ -e $(dirname $0)/docker-storage-setup.conf ]; then
+  source "$(dirname $0)/docker-storage-setup.conf"
 fi
 
 # Read mounts
 ROOT_DEV=$( awk '$2 ~ /^\/$/ && $1 !~ /rootfs/ { print $1 }' /proc/mounts )
 ROOT_VG=$( lvs --noheadings -o vg_name $ROOT_DEV | sed -e 's/^ *//' -e 's/ *$//')
 ROOT_PVS=$( pvs --noheadings -o pv_name,vg_name | awk "\$2 ~ /^$ROOT_VG\$/ { print \$1 }" )
+
+echo ROOT_DEV=$ROOT_DEV
+echo ROOT_VG=$ROOT_VG
+echo ROOT_PVS=$ROOT_PVS
+echo VG=$VG
 
 VG_EXISTS=
 if [ -z "$VG" ]; then
@@ -494,11 +508,11 @@ if [ -n "$DEVS" ] ; then
   create_extend_volume_group
 fi
 
-grow_root_pvs
+#grow_root_pvs
 
 # NB: We are growing root here first, because when root and docker share a
 # disk, we'll default to giving some portion of remaining space to docker.
-grow_root_lv_fs
+#grow_root_lv_fs
 
 if is_old_data_meta_mode; then
   echo "ERROR: Old mode of passing data and metadata logical volumes to docker is not supported. Exiting."
